@@ -1,18 +1,20 @@
+// src/App.jsx
 import { Routes, Route, Navigate, useNavigate } from "react-router-dom";
 import Login from "./components/Login/login.jsx";
 import Register from "./components/Register/register.jsx";
+import SubirRecurso from "./components/SubirRecurso/subirRecurso.jsx";
 import "./App.css";
 
 export default function App() {
   const navigate = useNavigate();
-  const user = localStorage.getItem("sistrecursos_user"); // simple "auth" demo
+  const user = localStorage.getItem("sistrecursos_user"); // demo auth
 
   return (
     <Routes>
-      {/* raíz: redirige según estado */}
+      {/* raíz: si hay sesión → /subir, si no → /login */}
       <Route
         path="/"
-        element={<Navigate to={user ? "/home" : "/login"} replace />}
+        element={<Navigate to={user ? "/subir" : "/login"} replace />}
       />
 
       {/* Login */}
@@ -22,7 +24,7 @@ export default function App() {
           <Login
             onSuccess={(email) => {
               localStorage.setItem("sistrecursos_user", email);
-              navigate("/home", { replace: true });
+              navigate("/subir", { replace: true });
             }}
             onGoRegister={() => navigate("/register")}
           />
@@ -36,35 +38,19 @@ export default function App() {
           <Register
             onSuccess={(email) => {
               localStorage.setItem("sistrecursos_user", email);
-              navigate("/home", { replace: true });
+              navigate("/subir", { replace: true });
             }}
             onBack={() => navigate("/login")}
           />
         }
       />
 
-      {/* Home protegida */}
+      {/* Subir Recurso (ruta protegida) */}
       <Route
-        path="/home"
+        path="/subir"
         element={
           user ? (
-            <main className="logged">
-              <section className="logged-card">
-                <h2>Bienvenido(a)</h2>
-                <p>
-                  Has iniciado sesión como <strong>{user}</strong>.
-                </p>
-                <button
-                  className="primary-btn"
-                  onClick={() => {
-                    localStorage.removeItem("sistrecursos_user");
-                    navigate("/login", { replace: true });
-                  }}
-                >
-                  Cerrar sesión
-                </button>
-              </section>
-            </main>
+            <SubirRecurso />
           ) : (
             <Navigate to="/login" replace />
           )
@@ -76,5 +62,3 @@ export default function App() {
     </Routes>
   );
 }
-
-
