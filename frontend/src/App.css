@@ -1,0 +1,13 @@
+html, body, #root { height:100%; width:100%; }
+body { margin:0; }
+
+/* 🔒 Centrado infalible */
+#root{
+  min-height:100vh;
+  display:flex !important;
+  align-items:center !important;   /* centra vertical */
+  justify-content:center !important; /* centra horizontal */
+}
+
+/* el card queda tal cual */
+.login-card{ width:100%; max-width:440px; }
