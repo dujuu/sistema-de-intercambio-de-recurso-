@@ -1,5 +1,5 @@
 import { useRef, useState, useEffect } from "react";
-import "../Login/login.css";        // reusa el look base (card/colores)
+import "../Login/login.css";        // look & feel base
 import "./subir-recurso.css";       // estilos propios de esta vista
 
 /* ------- Navbar simulado (no navega) ------- */
@@ -29,7 +29,13 @@ function SrNavbar() {
 export default function SubirRecurso() {
   const [file, setFile] = useState(null);
   const [previewUrl, setPreviewUrl] = useState("");
-  const [meta, setMeta] = useState({ titulo: "", descripcion: "", categoria: "", etiquetas: "" });
+  // MER: RecursoEducativo (titulo, descripcion)
+  const [meta, setMeta] = useState({ titulo: "", descripcion: "" });
+  // MER: Asignatura (codigo, nombre_asignatura)
+  const [asig, setAsig] = useState({ codigo: "", nombre_asignatura: "" });
+  // MER: Tema (nombre_tema)
+  const [tema, setTema] = useState({ nombre_tema: "" });
+
   const [errors, setErrors] = useState({});
   const [feedback, setFeedback] = useState("");
   const [progress, setProgress] = useState(0);
@@ -49,7 +55,6 @@ export default function SubirRecurso() {
   const isPdf = file?.type === "application/pdf";
   const isImage = ["image/png", "image/jpeg"].includes(file?.type);
 
-  // URL blob para previsualizar (y liberar memoria al cambiar/eliminar)
   useEffect(() => {
     if (!file) { setPreviewUrl(""); return; }
     const url = URL.createObjectURL(file);
@@ -66,7 +71,7 @@ export default function SubirRecurso() {
     if (!f) { setFile(null); return; }
     if (f.size > MAX_BYTES) e.file = "Archivo demasiado grande (máx. 20 MB).";
     if (!ACCEPTED.includes(f.type)) e.file = "Tipo no permitido (PDF, DOCX, PPTX, XLSX, ZIP, PNG, JPG).";
-    setErrors(e);
+    setErrors((prev) => ({ ...prev, file: e.file || "" }));
     if (Object.keys(e).length) return;
     setFile(f);
   };
@@ -78,7 +83,9 @@ export default function SubirRecurso() {
     const e = {};
     if (!file) e.file = "Selecciona un archivo.";
     if (!meta.titulo.trim()) e.titulo = "Ingresa un título.";
-    if (!meta.categoria) e.categoria = "Selecciona una categoría.";
+    if (!asig.codigo.trim()) e.asig_codigo = "Ingresa el código de asignatura.";
+    if (!asig.nombre_asignatura.trim()) e.asig_nombre = "Ingresa el nombre de la asignatura.";
+    if (!tema.nombre_tema.trim()) e.tema = "Ingresa el tema.";
     return e;
   };
 
@@ -92,14 +99,28 @@ export default function SubirRecurso() {
     setProgress(0);
     setFeedback("");
 
+    // ----- Payload según MER (SIN IDs; backend genera y relaciona) -----
+    const payload = {
+      recurso: {
+        titulo: meta.titulo.trim(),
+        descripcion: meta.descripcion.trim(),
+        tipo_archivo: file?.type || "desconocido",
+        fecha_subida: new Date().toISOString(),
+      },
+      asignatura: {
+        codigo: asig.codigo.trim(),
+        nombre_asignatura: asig.nombre_asignatura.trim(),
+      },
+      tema: {
+        nombre_tema: tema.nombre_tema.trim(),
+      },
+    };
+
     const fd = new FormData();
     fd.append("file", file);
-    fd.append("titulo", meta.titulo);
-    fd.append("descripcion", meta.descripcion);
-    fd.append("categoria", meta.categoria);
-    fd.append("etiquetas", meta.etiquetas);
+    fd.append("payload", JSON.stringify(payload));
 
-    // 🔗 Cambia por tu endpoint real de Laravel
+    // 🔗 Cambia por tu endpoint real de Laravel (multipart)
     const xhr = new XMLHttpRequest();
     xhrRef.current = xhr;
     xhr.open("POST", "/api/recursos/subir");
@@ -110,7 +131,9 @@ export default function SubirRecurso() {
       if (xhr.status >= 200 && xhr.status < 300) {
         setFeedback("✅ Recurso subido correctamente.");
         setFile(null);
-        setMeta({ titulo: "", descripcion: "", categoria: "", etiquetas: "" });
+        setMeta({ titulo: "", descripcion: "" });
+        setAsig({ codigo: "", nombre_asignatura: "" });
+        setTema({ nombre_tema: "" });
         setProgress(0);
         if (inputRef.current) inputRef.current.value = "";
       } else setFeedback("❌ Error al subir. Intenta nuevamente.");
@@ -128,7 +151,6 @@ export default function SubirRecurso() {
   };
 
   return (
-    /* ⬇️ usamos el wrapper de página y el navbar, NO .login-wrapper */
     <div className="subir-page">
       <SrNavbar />
 
@@ -144,7 +166,6 @@ export default function SubirRecurso() {
             </div>
           </header>
 
-          {/* Layout 2 columnas: izquierda formulario, derecha preview */}
           <div className="upload-layout">
             <form className="login-form upload-left" onSubmit={submit} noValidate>
               {/* Dropzone */}
@@ -175,7 +196,7 @@ export default function SubirRecurso() {
               </div>
               {errors.file && <small className="error">{errors.file}</small>}
 
-              {/* Metadatos */}
+              {/* Recurso: Título y descripción */}
               <label className="field">
                 <span>Título del recurso</span>
                 <input
@@ -197,33 +218,42 @@ export default function SubirRecurso() {
                 />
               </label>
 
+              {/* Asignatura (código + nombre) */}
               <div className="grid-2">
                 <label className="field">
-                  <span>Categoría</span>
-                  <select
-                    value={meta.categoria}
-                    onChange={(e) => setMeta({ ...meta, categoria: e.target.value })}
-                  >
-                    <option value="">Selecciona…</option>
-                    <option value="apuntes">Apuntes</option>
-                    <option value="presentacion">Presentación</option>
-                    <option value="tarea">Tarea/Informe</option>
-                    <option value="examen">Examen/Guía</option>
-                    <option value="libro">Libro/Capítulo</option>
-                    <option value="otros">Otros</option>
-                  </select>
-                  {errors.categoria && <small className="error">{errors.categoria}</small>}
+                  <span>Código Asignatura</span>
+                  <input
+                    name="codigo"
+                    value={asig.codigo}
+                    onChange={(e) => setAsig({ ...asig, codigo: e.target.value })}
+                    placeholder="INF-123 / MAT-220"
+                  />
+                  {errors.asig_codigo && <small className="error">{errors.asig_codigo}</small>}
                 </label>
 
                 <label className="field">
-                  <span>Etiquetas</span>
+                  <span>Nombre Asignatura</span>
                   <input
-                    value={meta.etiquetas}
-                    onChange={(e) => setMeta({ ...meta, etiquetas: e.target.value })}
-                    placeholder="separa-con-comas, p.ej.: calculo, unidad-3, uta"
+                    name="nombre_asignatura"
+                    value={asig.nombre_asignatura}
+                    onChange={(e) => setAsig({ ...asig, nombre_asignatura: e.target.value })}
+                    placeholder="Ingeniería de Software II"
                   />
+                  {errors.asig_nombre && <small className="error">{errors.asig_nombre}</small>}
                 </label>
               </div>
+
+              {/* Tema */}
+              <label className="field">
+                <span>Tema</span>
+                <input
+                  name="nombre_tema"
+                  value={tema.nombre_tema}
+                  onChange={(e) => setTema({ nombre_tema: e.target.value })}
+                  placeholder="Patrones de diseño / MVC"
+                />
+                {errors.tema && <small className="error">{errors.tema}</small>}
+              </label>
 
               {/* Progreso */}
               {isUploading && (
@@ -239,9 +269,20 @@ export default function SubirRecurso() {
               <div className="row-between">
                 {!isUploading ? (
                   <>
-                    <button type="button" className="link-btn"
-                            onClick={() => { setFile(null); setFeedback(""); setErrors({ ...errors, file: "" }); inputRef.current && (inputRef.current.value=""); }}>
-                      Quitar archivo
+                    <button
+                      type="button"
+                      className="link-btn"
+                      onClick={() => {
+                        setFile(null);
+                        setFeedback("");
+                        setErrors({});
+                        setMeta({ titulo: "", descripcion: "" });
+                        setAsig({ codigo: "", nombre_asignatura: "" });
+                        setTema({ nombre_tema: "" });
+                        if (inputRef.current) inputRef.current.value = "";
+                      }}
+                    >
+                      Limpiar
                     </button>
                     <button className="primary-btn" type="submit">Subir recurso</button>
                   </>
@@ -267,10 +308,7 @@ export default function SubirRecurso() {
                 )}
 
                 {file && isPdf && previewUrl && (
-                  <>
-                    <iframe className="pdf-frame" src={previewUrl} title="Vista previa PDF" />
-                    {/* El visor nativo del navegador trae controles de páginas/zoom */}
-                  </>
+                  <iframe className="pdf-frame" src={previewUrl} title="Vista previa PDF" />
                 )}
 
                 {file && isImage && previewUrl && (
