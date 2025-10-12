@@ -1,7 +1,9 @@
 // src/components/Login.jsx
 import { useState } from "react";
-import { Link } from "react-router-dom"; // ← si ya usas router
+import { Link } from "react-router-dom";
 import "./login.css";
+import { api } from "../../lib/api";
+ // ← si tu archivo está en /components/Login/login.jsx cambia a "../../lib/api"
 
 export default function Login({ onSuccess }) {
   const [form, setForm] = useState({ email: "", password: "", remember: true });
@@ -29,7 +31,7 @@ export default function Login({ onSuccess }) {
 
   const handleSubmit = async (ev) => {
     ev.preventDefault();
-    if (isSubmitting) return; // evita doble submit
+    if (isSubmitting) return;
 
     const e = validate();
     if (Object.keys(e).length) {
@@ -41,19 +43,19 @@ export default function Login({ onSuccess }) {
     setFeedback("");
 
     try {
-      // 🔐 Simulación de autenticación (reemplaza por tu llamada a Laravel)
-      await new Promise((r) => setTimeout(r, 900));
-      const ok = form.email && form.password;
+      // 🔐 Login REAL contra Laravel → devuelve { token: "..." }
+      const out = await api.login(form.email, form.password);
 
-      if (ok) {
-        if (form.remember) localStorage.setItem("sistrecursos_user", form.email);
-        setFeedback("Autenticación exitosa");
-        onSuccess?.(form.email);
-      } else {
-        setFeedback("Autenticación fallida. Verifica tus credenciales.");
+      // Persistencia local
+      if (form.remember) {
+        localStorage.setItem("sistrecursos_user", JSON.stringify({ email: form.email }));
+        localStorage.setItem("sistrecursos_token", out.token);
       }
+
+      setFeedback("Autenticación exitosa");
+      onSuccess?.(form.email, out.token); // ← App.jsx guardará también el token
     } catch (err) {
-      setFeedback("Ocurrió un error inesperado. Intenta nuevamente.");
+      setFeedback(`Autenticación fallida: ${err.message}`);
     } finally {
       setIsSubmitting(false);
     }
@@ -128,9 +130,7 @@ export default function Login({ onSuccess }) {
             <button
               type="button"
               className="link-btn"
-              onClick={() =>
-                setFeedback("Te enviamos un enlace de recuperación (demo)")
-              }
+              onClick={() => setFeedback("Te enviamos un enlace de recuperación (demo)")}
               disabled={isSubmitting}
             >
               ¿Olvidaste tu contraseña?
@@ -141,14 +141,12 @@ export default function Login({ onSuccess }) {
             {isSubmitting ? "Ingresando..." : "Iniciar sesión"}
           </button>
 
-          {/* Región accesible para feedback */}
           {feedback && (
             <div className="feedback" aria-live="polite">
               {feedback}
             </div>
           )}
 
-          {/* Enlace a registro con Router */}
           <p className="legal">
             ¿No tienes cuenta?{" "}
             <Link className="link-btn" to="/register">

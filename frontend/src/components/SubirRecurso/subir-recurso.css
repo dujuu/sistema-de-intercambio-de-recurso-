@@ -1,4 +1,4 @@
-/* ===== Shell de página y navbar (nuevo) ===== */
+/* src/components/subirRecurso.css*/
 .subir-page{
   width:100%;
   min-height:100vh;
@@ -8,22 +8,23 @@
 
 .upload-shell{
   width:100%;
-  max-width:1360px;           /* contenedor más ancho */
+  max-width:1360px;           
   margin:24px auto 56px;
   padding:0 20px;
 }
 
-/* Navbar simulado */
 .sr-navbar{
   position:sticky; top:0; z-index:30;
   background:linear-gradient(180deg, rgba(10,14,29,.85), rgba(11,16,32,.65));
   backdrop-filter:blur(8px);
   border-bottom:1px solid rgba(255,255,255,.06);
 }
+
 .sr-nav-inner{
   max-width:1360px; margin:0 auto; padding:10px 20px;
   display:flex; align-items:center; justify-content:space-between;
 }
+
 .sr-brand{ display:flex; align-items:center; gap:10px; }
 .sr-brand .brand-badge{
   width:34px; height:34px; border-radius:10px; display:grid; place-items:center;

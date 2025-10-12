@@ -1,8 +1,9 @@
+/* src/components/SubirRecurso/subirRecurso.jsx */
 import { useRef, useState, useEffect } from "react";
-import "../Login/login.css";        // look & feel base
-import "./subir-recurso.css";       // estilos propios de esta vista
+import "../Login/login.css";
+import "./subir-recurso.css";
+import { api } from "../../lib/api"; // 👈 usa tu helper que pega al backend
 
-/* ------- Navbar simulado (no navega) ------- */
 function SrNavbar() {
   const noop = (e) => e.preventDefault();
   return (
@@ -27,23 +28,30 @@ function SrNavbar() {
 }
 
 export default function SubirRecurso() {
+
   const [file, setFile] = useState(null);
   const [previewUrl, setPreviewUrl] = useState("");
-  // MER: RecursoEducativo (titulo, descripcion)
-  const [meta, setMeta] = useState({ titulo: "", descripcion: "" });
-  // MER: Asignatura (codigo, nombre_asignatura)
-  const [asig, setAsig] = useState({ codigo: "", nombre_asignatura: "" });
-  // MER: Tema (nombre_tema)
-  const [tema, setTema] = useState({ nombre_tema: "" });
+  const inputRef = useRef(null);
+
+  const [asigs, setAsigs] = useState([]);
+  const [temas, setTemas] = useState([]);
+
+  const [form, setForm] = useState({
+    titulo: "",
+    descripcion: "",
+    categoria: "",   // se mapea a tipo_archivo
+    etiquetas: "",   // opcional: lo añadimos a la descripción
+    ruta: "",        // URL (Drive, etc.)
+    asignatura_id: "",
+    tema_id: "",
+  });
 
   const [errors, setErrors] = useState({});
   const [feedback, setFeedback] = useState("");
-  const [progress, setProgress] = useState(0);
-  const [isUploading, setIsUploading] = useState(false);
-  const xhrRef = useRef(null);
-  const inputRef = useRef(null);
+  const [isSaving, setIsSaving] = useState(false);
 
-  const MAX_BYTES = 20 * 1024 * 1024; // 20MB
+  // Límites y tipos aceptados SOLO para la vista previa local
+  const MAX_BYTES = 20 * 1024 * 1024; 
   const ACCEPTED = [
     "application/pdf","application/zip",
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
@@ -51,10 +59,25 @@ export default function SubirRecurso() {
     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     "image/png","image/jpeg"
   ];
-
   const isPdf = file?.type === "application/pdf";
   const isImage = ["image/png", "image/jpeg"].includes(file?.type);
 
+  // Cargar catálogo desde la API
+  useEffect(() => {
+    api.asignaturas().then(setAsigs).catch(e => setFeedback("❌ "+e.message));
+  }, []);
+  useEffect(() => {
+    if (form.asignatura_id) {
+      api.temasByAsignatura(form.asignatura_id)
+        .then(setTemas)
+        .catch(e => setFeedback("❌ "+e.message));
+    } else {
+      setTemas([]);
+      setForm((f) => ({ ...f, tema_id: "" }));
+    }
+  }, [form.asignatura_id]);
+
+  // Vista previa local
   useEffect(() => {
     if (!file) { setPreviewUrl(""); return; }
     const url = URL.createObjectURL(file);
@@ -71,7 +94,7 @@ export default function SubirRecurso() {
     if (!f) { setFile(null); return; }
     if (f.size > MAX_BYTES) e.file = "Archivo demasiado grande (máx. 20 MB).";
     if (!ACCEPTED.includes(f.type)) e.file = "Tipo no permitido (PDF, DOCX, PPTX, XLSX, ZIP, PNG, JPG).";
-    setErrors((prev) => ({ ...prev, file: e.file || "" }));
+    setErrors(e);
     if (Object.keys(e).length) return;
     setFile(f);
   };
@@ -79,75 +102,62 @@ export default function SubirRecurso() {
   const onDrop = (ev) => { ev.preventDefault(); handleFile(ev.dataTransfer.files?.[0]); };
   const onDragOver = (ev) => ev.preventDefault();
 
+  // ✅ Validación para la API actual (JSON)
   const validate = () => {
     const e = {};
-    if (!file) e.file = "Selecciona un archivo.";
-    if (!meta.titulo.trim()) e.titulo = "Ingresa un título.";
-    if (!asig.codigo.trim()) e.asig_codigo = "Ingresa el código de asignatura.";
-    if (!asig.nombre_asignatura.trim()) e.asig_nombre = "Ingresa el nombre de la asignatura.";
-    if (!tema.nombre_tema.trim()) e.tema = "Ingresa el tema.";
+    if (!form.titulo.trim()) e.titulo = "Ingresa un título.";
+    if (!form.categoria) e.categoria = "Selecciona una categoría.";
+    if (!form.asignatura_id) e.asignatura_id = "Selecciona una asignatura.";
+    if (!form.tema_id) e.tema_id = "Selecciona un tema.";
+    if (!form.ruta.trim()) e.ruta = "Pega la URL del recurso (Drive/WEB).";
     return e;
   };
 
-  const submit = (ev) => {
+  const submit = async (ev) => {
     ev.preventDefault();
-    if (isUploading) return;
+    if (isSaving) return;
+
     const v = validate();
     if (Object.keys(v).length) { setErrors(v); return; }
 
-    setIsUploading(true);
-    setProgress(0);
+    setIsSaving(true);
     setFeedback("");
+    try {
+      // Mapeo UI -> API
+      const tipo_archivo = form.categoria || "otros";
+      const descripcion = form.etiquetas
+        ? `${form.descripcion || ""}\n\nEtiquetas: ${form.etiquetas}`
+        : form.descripcion || null;
 
-    // ----- Payload según MER (SIN IDs; backend genera y relaciona) -----
-    const payload = {
-      recurso: {
-        titulo: meta.titulo.trim(),
-        descripcion: meta.descripcion.trim(),
-        tipo_archivo: file?.type || "desconocido",
-        fecha_subida: new Date().toISOString(),
-      },
-      asignatura: {
-        codigo: asig.codigo.trim(),
-        nombre_asignatura: asig.nombre_asignatura.trim(),
-      },
-      tema: {
-        nombre_tema: tema.nombre_tema.trim(),
-      },
-    };
+      const payload = {
+        titulo: form.titulo,
+        descripcion,
+        tipo_archivo,
+        ruta: form.ruta, // URL externa (Drive/WEB). El archivo NO se sube en esta versión.
+        asignatura_id: Number(form.asignatura_id),
+        tema_id: Number(form.tema_id),
+      };
 
-    const fd = new FormData();
-    fd.append("file", file);
-    fd.append("payload", JSON.stringify(payload));
-
-    // 🔗 Cambia por tu endpoint real de Laravel (multipart)
-    const xhr = new XMLHttpRequest();
-    xhrRef.current = xhr;
-    xhr.open("POST", "/api/recursos/subir");
-
-    xhr.upload.onprogress = (e) => e.lengthComputable && setProgress(Math.round((e.loaded/e.total)*100));
-    xhr.onload = () => {
-      setIsUploading(false);
-      if (xhr.status >= 200 && xhr.status < 300) {
-        setFeedback("✅ Recurso subido correctamente.");
-        setFile(null);
-        setMeta({ titulo: "", descripcion: "" });
-        setAsig({ codigo: "", nombre_asignatura: "" });
-        setTema({ nombre_tema: "" });
-        setProgress(0);
-        if (inputRef.current) inputRef.current.value = "";
-      } else setFeedback("❌ Error al subir. Intenta nuevamente.");
-    };
-    xhr.onerror = () => { setIsUploading(false); setFeedback("❌ Error de red. Revisa tu conexión."); };
-
-    xhr.send(fd);
-  };
-
-  const cancel = () => {
-    xhrRef.current?.abort();
-    setIsUploading(false);
-    setProgress(0);
-    setFeedback("⚠️ Carga cancelada.");
+      await api.crearRecurso(payload); // 👈 pega a /api/recursos con token
+      setFeedback("✅ Recurso creado correctamente.");
+      setErrors({});
+      setFile(null);
+      setPreviewUrl("");
+      if (inputRef.current) inputRef.current.value = "";
+      setForm({
+        titulo: "",
+        descripcion: "",
+        categoria: "",
+        etiquetas: "",
+        ruta: "",
+        asignatura_id: "",
+        tema_id: "",
+      });
+    } catch (err) {
+      setFeedback("❌ " + err.message);
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   return (
@@ -166,9 +176,10 @@ export default function SubirRecurso() {
             </div>
           </header>
 
+          {/* Layout 2 columnas: izquierda formulario, derecha preview */}
           <div className="upload-layout">
             <form className="login-form upload-left" onSubmit={submit} noValidate>
-              {/* Dropzone */}
+              {/* Dropzone (solo vista previa local) */}
               <div
                 className={`dropzone ${errors.file ? "dz-error" : ""} ${file ? "dz-hasfile" : ""}`}
                 onDrop={onDrop} onDragOver={onDragOver}
@@ -196,13 +207,13 @@ export default function SubirRecurso() {
               </div>
               {errors.file && <small className="error">{errors.file}</small>}
 
-              {/* Recurso: Título y descripción */}
+              {/* Metadatos que van a la API */}
               <label className="field">
                 <span>Título del recurso</span>
                 <input
                   name="titulo"
-                  value={meta.titulo}
-                  onChange={(e) => setMeta({ ...meta, titulo: e.target.value })}
+                  value={form.titulo}
+                  onChange={(e) => setForm({ ...form, titulo: e.target.value })}
                   placeholder="Ej: Apuntes de Cálculo III - Integrales múltiples"
                 />
                 {errors.titulo && <small className="error">{errors.titulo}</small>}
@@ -212,87 +223,103 @@ export default function SubirRecurso() {
                 <span>Descripción</span>
                 <textarea
                   className="textarea" rows={3}
-                  value={meta.descripcion}
-                  onChange={(e) => setMeta({ ...meta, descripcion: e.target.value })}
+                  value={form.descripcion}
+                  onChange={(e) => setForm({ ...form, descripcion: e.target.value })}
                   placeholder="Breve contexto del material, curso, unidad, profesor, etc."
                 />
               </label>
 
-              {/* Asignatura (código + nombre) */}
               <div className="grid-2">
                 <label className="field">
-                  <span>Código Asignatura</span>
-                  <input
-                    name="codigo"
-                    value={asig.codigo}
-                    onChange={(e) => setAsig({ ...asig, codigo: e.target.value })}
-                    placeholder="INF-123 / MAT-220"
-                  />
-                  {errors.asig_codigo && <small className="error">{errors.asig_codigo}</small>}
+                  <span>Categoría</span>
+                  <select
+                    value={form.categoria}
+                    onChange={(e) => setForm({ ...form, categoria: e.target.value })}
+                  >
+                    <option value="">Selecciona…</option>
+                    <option value="pdf">PDF</option>
+                    <option value="docx">DOCX</option>
+                    <option value="pptx">PPTX</option>
+                    <option value="xlsx">XLSX</option>
+                    <option value="img">Imagen</option>
+                    <option value="link">Link</option>
+                    <option value="otros">Otros</option>
+                  </select>
+                  {errors.categoria && <small className="error">{errors.categoria}</small>}
                 </label>
 
                 <label className="field">
-                  <span>Nombre Asignatura</span>
+                  <span>Etiquetas</span>
                   <input
-                    name="nombre_asignatura"
-                    value={asig.nombre_asignatura}
-                    onChange={(e) => setAsig({ ...asig, nombre_asignatura: e.target.value })}
-                    placeholder="Ingeniería de Software II"
+                    value={form.etiquetas}
+                    onChange={(e) => setForm({ ...form, etiquetas: e.target.value })}
+                    placeholder="separa-con-comas, p.ej.: calculo, unidad-3, uta"
                   />
-                  {errors.asig_nombre && <small className="error">{errors.asig_nombre}</small>}
                 </label>
               </div>
 
-              {/* Tema */}
+              <div className="grid-2">
+                <label className="field">
+                  <span>Asignatura</span>
+                  <select
+                    value={form.asignatura_id}
+                    onChange={(e) => setForm({ ...form, asignatura_id: e.target.value, tema_id: "" })}
+                    required
+                  >
+                    <option value="">Selecciona…</option>
+                    {asigs.map((a) => (
+                      <option key={a.id} value={a.id}>{a.nombre_asignatura}</option>
+                    ))}
+                  </select>
+                  {errors.asignatura_id && <small className="error">{errors.asignatura_id}</small>}
+                </label>
+
+                <label className="field">
+                  <span>Tema</span>
+                  <select
+                    value={form.tema_id}
+                    onChange={(e) => setForm({ ...form, tema_id: e.target.value })}
+                    required
+                    disabled={!form.asignatura_id}
+                  >
+                    <option value="">Selecciona…</option>
+                    {temas.map((t) => (
+                      <option key={t.id} value={t.id}>{t.nombre_tema}</option>
+                    ))}
+                  </select>
+                  {errors.tema_id && <small className="error">{errors.tema_id}</small>}
+                </label>
+              </div>
+
               <label className="field">
-                <span>Tema</span>
+                <span>URL del recurso (ruta)</span>
                 <input
-                  name="nombre_tema"
-                  value={tema.nombre_tema}
-                  onChange={(e) => setTema({ nombre_tema: e.target.value })}
-                  placeholder="Patrones de diseño / MVC"
+                  value={form.ruta}
+                  onChange={(e) => setForm({ ...form, ruta: e.target.value })}
+                  placeholder="https://drive.google.com/… o enlace público"
                 />
-                {errors.tema && <small className="error">{errors.tema}</small>}
+                {errors.ruta && <small className="error">{errors.ruta}</small>}
               </label>
 
-              {/* Progreso */}
-              {isUploading && (
-                <div className="progress">
-                  <div className="progress-track">
-                    <div className="progress-bar" style={{ width: `${progress}%` }} />
-                  </div>
-                  <div className="progress-info">{progress}%</div>
-                </div>
-              )}
-
-              {/* Acciones */}
-              <div className="row-between">
-                {!isUploading ? (
-                  <>
-                    <button
-                      type="button"
-                      className="link-btn"
-                      onClick={() => {
-                        setFile(null);
-                        setFeedback("");
-                        setErrors({});
-                        setMeta({ titulo: "", descripcion: "" });
-                        setAsig({ codigo: "", nombre_asignatura: "" });
-                        setTema({ nombre_tema: "" });
-                        if (inputRef.current) inputRef.current.value = "";
-                      }}
-                    >
-                      Limpiar
-                    </button>
-                    <button className="primary-btn" type="submit">Subir recurso</button>
-                  </>
-                ) : (
-                  <>
-                    <span />
-                    <button type="button" className="primary-btn" onClick={cancel}>Cancelar</button>
-                  </>
-                )}
+              <div className="row-between" style={{ marginTop: 12 }}>
+                <button
+                  type="button"
+                  className="link-btn"
+                  onClick={() => {
+                    setFile(null);
+                    setFeedback("");
+                    setErrors((prev) => ({ ...prev, file: "" }));
+                    inputRef.current && (inputRef.current.value = "");
+                  }}
+                >
+                  Quitar archivo
+                </button>
+                <button className="primary-btn" type="submit" disabled={isSaving}>
+                  {isSaving ? "Guardando…" : "Guardar recurso"}
+                </button>
               </div>
+
+              
 
               {feedback && <div className="feedback" aria-live="polite">{feedback}</div>}
             </form>

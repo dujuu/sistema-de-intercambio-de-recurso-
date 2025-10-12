@@ -1,12 +1,14 @@
+// src/components/Register.jsx
 import { useState } from "react";
 import "./register.css";
+import { api } from "../../lib/api";
+// 👈 ajusta ruta si tu archivo está en /components/Register/register.jsx
 
 export default function Register({ onSuccess, onBack }) {
   const [form, setForm] = useState({
     nombre: "",
-    correo: "",
-    carrera: "",
-    semestre: "",
+    apellido: "",
+    email: "",
     password: "",
     confirm: "",
     acepta: true,
@@ -25,52 +27,55 @@ export default function Register({ onSuccess, onBack }) {
   const validate = () => {
     const e = {};
     if (!form.nombre.trim()) e.nombre = "Ingresa tu nombre";
-    if (!form.correo.trim()) e.correo = "Ingresa tu correo";
-    else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.correo)) e.correo = "Correo inválido";
-    if (!form.carrera) e.carrera = "Selecciona tu carrera";
-    if (!form.semestre) e.semestre = "Selecciona tu semestre";
+    if (!form.apellido.trim()) e.apellido = "Ingresa tu apellido";
+
+    if (!form.email.trim()) e.email = "Ingresa tu correo";
+    else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email))
+      e.email = "Formato de correo inválido";
+
     if (!form.password) e.password = "Crea una contraseña";
     else if (form.password.length < 6) e.password = "Mínimo 6 caracteres";
+
     if (!form.confirm) e.confirm = "Confirma tu contraseña";
-    if (form.password && form.confirm && form.password !== form.confirm) e.confirm = "No coincide";
-    if (!form.acepta) e.acepta = "Debes aceptar las políticas";
+    if (form.password && form.confirm && form.password !== form.confirm)
+      e.confirm = "Las contraseñas no coinciden";
+
+    if (!form.acepta) e.acepta = "Debes aceptar las políticas de uso";
     return e;
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     const v = validate();
-    if (Object.keys(v).length) { setErrors(v); return; }
-
+    if (Object.keys(v).length) {
+      setErrors(v);
+      return;
+    }
     setBusy(true);
+    setFeedback("");
 
-    // 🔸 Payload SIN IDs ni rol (backend los genera automáticamente)
-    const payload = {
-      nombre: form.nombre.trim(),
-      correo: form.correo.trim(),
-      carrera: form.carrera,
-      semestre: Number(form.semestre),
-      contrasena: form.password,
-    };
+    try {
+      // 1) Crear usuario en Laravel
+await api.register({
+  nombre: form.nombre,
+  apellido: form.apellido,
+  email: form.email,
+  password: form.password,
+});
 
-    // TODO: POST /api/estudiantes con 'payload'
-    await new Promise((r) => setTimeout(r, 700)); // demo
+      // 2) Login para obtener token
+      const out = await api.login(form.email, form.password); // { token: '...' }
 
-    // Guardamos datos básicos de sesión (sin id/rol)
-    localStorage.setItem(
-      "sistrecursos_user",
-      JSON.stringify({
-        nombre: payload.nombre,
-        correo: payload.correo,
-        carrera: payload.carrera,
-        semestre: payload.semestre,
-      })
-    );
-
-    setBusy(false);
-    setFeedback("Cuenta creada con éxito");
-    onSuccess?.(payload.correo);
+      setFeedback("✅ Cuenta creada con éxito");
+      onSuccess?.(form.email, out.token); // 👈 importante: pasa token al App.jsx
+    } catch (err) {
+      setFeedback(`❌ ${err.message}`);
+    } finally {
+      setBusy(false);
+    }
   };
+
+  const seguridad = getPasswordScore(form.password);
 
   return (
     <div className="register-wrapper">
@@ -86,58 +91,44 @@ export default function Register({ onSuccess, onBack }) {
         </header>
 
         <form className="register-form" onSubmit={handleSubmit} noValidate>
-          <label className="field">
-            <span>Nombre completo</span>
-            <input
-              name="nombre"
-              value={form.nombre}
-              onChange={handleChange}
-              placeholder="Andrea Navia"
-              autoComplete="name"
-            />
-            {errors.nombre && <small className="error">{errors.nombre}</small>}
-          </label>
+          <div className="grid-2">
+            <label className="field">
+              <span>Nombre</span>
+              <input
+                name="nombre"
+                value={form.nombre}
+                onChange={handleChange}
+                placeholder="Andrea"
+                autoComplete="given-name"
+              />
+              {errors.nombre && <small className="error">{errors.nombre}</small>}
+            </label>
+
+            <label className="field">
+              <span>Apellido</span>
+              <input
+                name="apellido"
+                value={form.apellido}
+                onChange={handleChange}
+                placeholder="Navia"
+                autoComplete="family-name"
+              />
+              {errors.apellido && <small className="error">{errors.apellido}</small>}
+            </label>
+          </div>
 
           <label className="field">
             <span>Correo</span>
             <input
               type="email"
-              name="correo"
-              value={form.correo}
+              name="email"
+              value={form.email}
               onChange={handleChange}
-              placeholder="nombre.apellido@alumnos.uta.cl"
+              placeholder="nombre.apellido@ejemplo.cl"
               autoComplete="email"
             />
-            {errors.correo && <small className="error">{errors.correo}</small>}
+            {errors.email && <small className="error">{errors.email}</small>}
           </label>
-
-          <div className="grid-2">
-            <label className="field">
-              <span>Carrera</span>
-              <select name="carrera" value={form.carrera} onChange={handleChange}>
-                <option value="">Selecciona…</option>
-                <option value="Ing. Informática">Ing. Informática</option>
-                <option value="Ing. Civil">Ing. Civil</option>
-                <option value="Ing. Industrial">Ing. Industrial</option>
-                <option value="Arquitectura">Arquitectura</option>
-                <option value="Otra">Otra</option>
-              </select>
-              {errors.carrera && <small className="error">{errors.carrera}</small>}
-            </label>
-
-            <label className="field">
-              <span>Semestre</span>
-              <select name="semestre" value={form.semestre} onChange={handleChange}>
-                <option value="">Selecciona…</option>
-                {Array.from({ length: 12 }).map((_, i) => (
-                  <option key={i + 1} value={i + 1}>
-                    {i + 1}
-                  </option>
-                ))}
-              </select>
-              {errors.semestre && <small className="error">{errors.semestre}</small>}
-            </label>
-          </div>
 
           <label className="field">
             <span>Contraseña</span>
@@ -150,6 +141,15 @@ export default function Register({ onSuccess, onBack }) {
               autoComplete="new-password"
             />
             {errors.password && <small className="error">{errors.password}</small>}
+
+            {form.password && (
+              <>
+                <div className={`pwd-meter lvl-${seguridad.level}`}>
+                  <div style={{ width: `${seguridad.percent}%` }} />
+                </div>
+                <small className="hint">Seguridad: {seguridad.label}</small>
+              </>
+            )}
           </label>
 
           <label className="field">
@@ -162,8 +162,8 @@ export default function Register({ onSuccess, onBack }) {
               placeholder="••••••••"
               autoComplete="new-password"
             />
-            {errors.confirm && <small className="error">{errors.confirm}</small>}
           </label>
+          {errors.confirm && <small className="error">{errors.confirm}</small>}
 
           <div className="row-between">
             <label className="remember">
@@ -191,4 +191,21 @@ export default function Register({ onSuccess, onBack }) {
       </div>
     </div>
   );
+}
+
+/** Medidor simple de seguridad de contraseña */
+function getPasswordScore(pwd) {
+  let score = 0;
+  if (pwd.length >= 6) score += 25;
+  if (/[A-Z]/.test(pwd)) score += 20;
+  if (/[a-z]/.test(pwd)) score += 20;
+  if (/\d/.test(pwd)) score += 20;
+  if (/[^A-Za-z0-9]/.test(pwd)) score += 15;
+
+  const percent = Math.min(score, 100);
+  let label = "Débil", level = 1;
+  if (percent >= 75) { label = "Fuerte"; level = 3; }
+  else if (percent >= 50) { label = "Media"; level = 2; }
+
+  return { percent, label, level };
 }

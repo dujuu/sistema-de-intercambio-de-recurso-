@@ -1,4 +1,4 @@
-/* src/components/login.css  (o pégalo en App.css) */
+/* src/components/login.css*/
 :root{
   --bg: #0b1020;
   --card: #0f162e;
@@ -19,8 +19,8 @@ body{margin:0;font-family:Inter,system-ui,Segoe UI,Roboto,Arial,sans-serif;backg
 }
 .login-wrapper{
   width:100%;
-  max-width:480px;          /* el card queda tope 480px */
-  padding:0 16px;           /* respiración lateral */
+  max-width:480px;          
+  padding:0 16px;           
 }
 
 .login-card{

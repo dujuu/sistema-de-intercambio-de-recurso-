@@ -5,6 +5,7 @@ use App\Http\Controllers\{
     AuthController, AsignaturaController, TemaController,
     RecursoController, ComentarioController, CalificacionController, ReporteController
 };
+Route::get('/health', fn () => ['ok' => true, 'time' => now()->toISOString()]);
 
 // Auth
 Route::post('/auth/register',[AuthController::class,'register']);
